@@ -135,3 +135,38 @@ adb shell "su -c '
     fi
 '"
 ```
+
+---
+
+## 7. Category Normalization to Canonical Taxonomies
+
+Toque displays categories as horizontal filter chips. Third-party portals (such as Cookomix) often output comma-separated, multi-tag combinations (e.g. *«Apéritif, Accompagnement»*, *«Petit-déjeuner, Desserts»*). If left unnormalized, these create dozens of redundant hybrid chips.
+
+### Canonical Appliance Taxonomies:
+Map every incoming recipe strictly to one of the 14 standard categories:
+- **Випічка (Baking)**: Bread, baguettes, buns, brioche, dough, pizza.
+- **Десерти (Desserts)**: Cakes, cookies, puddings, creams, chocolate.
+- **Основні страви (Main Dishes)**: Meat, poultry, fish, pasta, noodles, risotto, cannelloni.
+- **Супи (Soups)**: Soups, broths, potages, curries.
+- **Закуски (Appetizers)**: Canapes, croutons, snacks, finger food, spreads.
+- **Гарніри (Side Dishes)**: Vegetables, spinach, potatoes, purees.
+- **Соуси та пасти (Sauces & Spreads)**: Sauces, dips, pestos, dressings.
+- **Салати (Salads)**: Fresh & warm salads.
+- **Сніданки (Breakfast)**: Pancakes, cereals, morning meals.
+- **Напої (Beverages)**: Smoothies, juices, cocktails.
+- **Джеми та варення (Jams & Preserves)**: Sweet spreads, compotes.
+- **Веганське (Vegan)** / **Вечеря (Dinner)** / **Все в одному (One-Pot)**.
+
+*All secondary tags, diet indicators (vegan, gluten-free), and source marks (e.g., `["Cookomix", "CM"]`) MUST be pushed into the `tags` array instead of polluting the primary `category`.*
+
+---
+
+## 8. Post-Build Automated Integrity Verification
+
+Before deployment, pipelines MUST run an automated validation pass verifying:
+1. **User Version Pragma**: Ensure `PRAGMA user_version == 1`.
+2. **Table Completeness**: Verify existence of `recipes`, `favorites`, `adjustments`, `cooked`, `android_metadata`.
+3. **Category Sanity**: Assert 100% of recipes have a non-empty `category` belonging to the canonical list.
+4. **Scale Label Hygiene**: Verify zero empty, truncated (`(`), or raw untranslated strings in `steps[].weigh.label`.
+5. **JSON Parseability**: Ensure all records deserialize cleanly through `RecipeCodec`.
+
