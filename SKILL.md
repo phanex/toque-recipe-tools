@@ -161,30 +161,40 @@ Map every incoming recipe strictly to one of the 14 standard categories:
 
 ---
 
-## 8. Safety Policy, Appliance Parameter Clamping & Smart Split
+## 8. Safety Policy, Appliance Parameter Clamping & Smart Adaptation
 
 Third-party community platforms (such as Cookomix / Thermomix recipes) frequently specify motor and heating combinations that violate Monsieur Cuisine Connect's firmware and physical hardware safety limits (`SafetyPolicy.kt`). If written directly to the database without normalization, Toque marks the step invalid (`violations.isNotEmpty()`), permanently disabling the machine launch button.
 
-### Smart Split vs. Destructive Clamping:
-**Never destructively clamp cumulative durations that destroy culinary results.** Instead, implement smart sequence splitting:
-1. **Knead Duration Splitting (`petrir` > 120 s)**:
-   - Monsieur Cuisine limits continuous kneading to **120 seconds (2 minutes)** to protect the transmission gearbox and motor brushes from overheating under dense dough load.
-   - If an imported recipe specifies > 120 s (e.g. 4 minutes, 5 minutes), the pipeline **MUST NOT** truncate it down to 2 minutes.
-   - The pipeline **MUST split the step into consecutive cycles** capped at 120 s each:
-     - *Example 1 (240 s / 4 min)*: Split into Step A (120 s) and Step B (120 s), appending cycle subtitles (e.g., *«(Частина 1/2)»*, *«(Частина 2/2)»*).
-     - *Example 2 (180 s / 3 min)*: Split into Step A (120 s) and Step B (60 s).
-     - *Example 3 (300 s / 5 min)*: Split into Step A (120 s), Step B (120 s), and Step C (60 s).
-   - This ensures the exact total kneading time requested by the chef is fulfilled while 100% respecting appliance safety limits.
+### Smart Adaptation Protocols:
+**Never destructively clamp cumulative durations or parameters if it compromises culinary results.** Instead, apply the following 4 engineering protocols:
 
-### Parameter Normalization (Clamping):
-1. **Heated Speed Limit**: If `tempC > 0`, clamp `speed = min(speed, 3)`. (Hardware motor controller mechanically prohibits heating at speeds 4–10 to avoid hot liquid splashing).
-2. **Reverse Speed Limit**: If `reverse == true`, clamp `speed = min(speed, 3)`. (Motor controller prohibits counter-clockwise rotation above speed 3).
-3. **No-Stir Temperature Limit**: If `speed == 0`, clamp `tempC = min(tempC, 120)` to prevent scorching without agitation.
-4. **Toast (Rissoler) Limit**:
-   - `seconds = min(seconds, 840)` (maximum 14 minutes). If > 840 s, apply Smart Split.
-   - `speed = min(speed, 1)`, counter-clockwise direction.
-5. **Steam (Vapeur) Limit**:
-   - `speed = min(speed, 1)`.
+1. **Smart Split: Knead Duration (`petrir` > 120 s)**:
+   - *Physical limit*: MCC firmware restricts continuous kneading to **120 seconds (2 minutes)** to protect the drive motor and transmission gears from overheating under dense dough load.
+   - *Protocol*: Split the step into consecutive cycles of max 120 s each:
+     - 240 s (4 min) $\rightarrow$ Step A (120 s) + Step B (120 s).
+     - 180 s (3 min) $\rightarrow$ Step A (120 s) + Step B (60 s).
+     - 300 s (5 min) $\rightarrow$ Step A (120 s) + Step B (120 s) + Step C (60 s).
+     - Append cycle markers: *«(Частина 1/2 — 120 с)»*, *«(Частина 2/2 — 120 с)»*.
+
+2. **Smart Split: Searing & Toasting (`rissoler` > 840 s / 14 min)**:
+   - *Physical limit*: Toasting mode heats the base plate up to 130°C and is hard-capped at **14 minutes (840 s)** to prevent oil smoking and thermal cutoff trips.
+   - *Protocol*: Split long searing steps (> 840 s) into two consecutive cycles (e.g. 20 min $\rightarrow$ 10 min + 10 min), allowing base temperature equalization.
+
+3. **Two-Phase Adaptation: Heated High-Speed Blending (`tempC > 0` + `speed ≥ 4`)**:
+   - *Physical limit*: MCC's wide 3-liter bowl creates severe vortex forces at speed $\ge 4$; heating with active high speed is mechanically blocked (`Limits.MAX_SPEED_HEATED = 3`) to prevent scalding liquid leaks under steam pressure.
+   - *Protocol*:
+     - *For stews, soups, and cooking*: Normalize to `speed = 3` (retains 100% of thermal transfer and simmering without blending ingredients into mush).
+     - *For sauces/creams requiring hot emulsion* (e.g. *«cook 10 min / 100°C / speed 4»*): Split into:
+       - **Phase 1 (Cooking)**: 10 min / 100°C / speed 3 (cooks through thoroughly).
+       - **Phase 2 (Emulsion / Finishing)**: 20–30 s / speed 4–5 with heating disabled (`tempC = 0`). The bowl remains near-boiling, creating the requested emulsion without triggering the safety interlock.
+
+4. **No-Stir High Temperature Guard (`speed == 0` + `tempC > 120°C`)**:
+   - *Physical limit*: Heating above 120°C (up to 130°C) without blade movement causes immediate bottom scorching and local thermal trips.
+   - *Protocol*: Rather than rejecting the step or capping temperature at 120°C, set **`speed = 1, reverse = true`** (gentle reverse rotation). The blunt side of the knife prevents burning while keeping fragile ingredients intact.
+
+5. **Reverse High Speed Normalization (`reverse == true` + `speed > 3`)**:
+   - *Physical limit*: Counter-clockwise motor torque on the blunt blade edge is restricted to speeds 1–3 to prevent gear stripping.
+   - *Protocol*: Soft-clamp `speed = 3` with `reverse = true`.
 
 ---
 
