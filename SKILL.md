@@ -161,12 +161,40 @@ Map every incoming recipe strictly to one of the 14 standard categories:
 
 ---
 
-## 8. Post-Build Automated Integrity Verification
+## 8. Safety Policy, Appliance Parameter Clamping & Smart Split
+
+Third-party community platforms (such as Cookomix / Thermomix recipes) frequently specify motor and heating combinations that violate Monsieur Cuisine Connect's firmware and physical hardware safety limits (`SafetyPolicy.kt`). If written directly to the database without normalization, Toque marks the step invalid (`violations.isNotEmpty()`), permanently disabling the machine launch button.
+
+### Smart Split vs. Destructive Clamping:
+**Never destructively clamp cumulative durations that destroy culinary results.** Instead, implement smart sequence splitting:
+1. **Knead Duration Splitting (`petrir` > 120 s)**:
+   - Monsieur Cuisine limits continuous kneading to **120 seconds (2 minutes)** to protect the transmission gearbox and motor brushes from overheating under dense dough load.
+   - If an imported recipe specifies > 120 s (e.g. 4 minutes, 5 minutes), the pipeline **MUST NOT** truncate it down to 2 minutes.
+   - The pipeline **MUST split the step into consecutive cycles** capped at 120 s each:
+     - *Example 1 (240 s / 4 min)*: Split into Step A (120 s) and Step B (120 s), appending cycle subtitles (e.g., *«(Частина 1/2)»*, *«(Частина 2/2)»*).
+     - *Example 2 (180 s / 3 min)*: Split into Step A (120 s) and Step B (60 s).
+     - *Example 3 (300 s / 5 min)*: Split into Step A (120 s), Step B (120 s), and Step C (60 s).
+   - This ensures the exact total kneading time requested by the chef is fulfilled while 100% respecting appliance safety limits.
+
+### Parameter Normalization (Clamping):
+1. **Heated Speed Limit**: If `tempC > 0`, clamp `speed = min(speed, 3)`. (Hardware motor controller mechanically prohibits heating at speeds 4–10 to avoid hot liquid splashing).
+2. **Reverse Speed Limit**: If `reverse == true`, clamp `speed = min(speed, 3)`. (Motor controller prohibits counter-clockwise rotation above speed 3).
+3. **No-Stir Temperature Limit**: If `speed == 0`, clamp `tempC = min(tempC, 120)` to prevent scorching without agitation.
+4. **Toast (Rissoler) Limit**:
+   - `seconds = min(seconds, 840)` (maximum 14 minutes). If > 840 s, apply Smart Split.
+   - `speed = min(speed, 1)`, counter-clockwise direction.
+5. **Steam (Vapeur) Limit**:
+   - `speed = min(speed, 1)`.
+
+---
+
+## 9. Post-Build Automated Integrity Verification
 
 Before deployment, pipelines MUST run an automated validation pass verifying:
 1. **User Version Pragma**: Ensure `PRAGMA user_version == 1`.
 2. **Table Completeness**: Verify existence of `recipes`, `favorites`, `adjustments`, `cooked`, `android_metadata`.
 3. **Category Sanity**: Assert 100% of recipes have a non-empty `category` belonging to the canonical list.
-4. **Scale Label Hygiene**: Verify zero empty, truncated (`(`), or raw untranslated strings in `steps[].weigh.label`.
-5. **JSON Parseability**: Ensure all records deserialize cleanly through `RecipeCodec`.
+4. **Safety Compliance**: Assert 0 safety violations across all `steps[].machine` definitions (`violations == 0`).
+5. **Scale Label Hygiene**: Verify zero empty, truncated (`(`), or raw untranslated strings in `steps[].weigh.label`.
+6. **JSON Parseability**: Ensure all records deserialize cleanly through `RecipeCodec`.
 
